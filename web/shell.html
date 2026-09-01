@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ScrubPDF</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --border: #e2e0da; --text: #2b2a27;
+    --muted: #6b6a65; --accent: #c15f3c; --accent-dark: #a44e30;
+    --good: #2f6f4f; --warn: #b8862e; --mono: "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin-bottom: 16px;
+  }
+  .drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 36px 16px;
+    text-align: center; cursor: pointer; transition: all .15s;
+  }
+  .drop.drag { border-color: var(--accent); background: #fbf3ef; }
+  .drop.has-file { border-style: solid; border-color: var(--good); background: #f2f8f4; }
+  .drop-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-main { font-size: 15px; font-weight: 500; }
+  .drop-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  input[type=file] { display: none; }
+  .modes { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+  .mode-opt {
+    display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .mode-opt.selected { border-color: var(--accent); background: #fdf6f3; }
+  .mode-opt input { margin-top: 3px; }
+  .mode-title { font-size: 14px; font-weight: 600; }
+  .mode-desc { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .target-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; margin-left: 26px; }
+  .target-row input[type=number] {
+    width: 80px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+  }
+  button.primary {
+    width: 100%; padding: 13px; margin-top: 20px; border: none; border-radius: 8px;
+    background: var(--accent); color: white; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.primary:disabled { background: #d8bcae; cursor: not-allowed; }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+  .log {
+    font-family: var(--mono); font-size: 12px; background: #1e1e1c; color: #d7d6d0;
+    border-radius: 8px; padding: 14px; margin-top: 16px; max-height: 220px; overflow-y: auto;
+    white-space: pre-wrap; display: none;
+  }
+  .log.show { display: block; }
+  .result { display: none; margin-top: 16px; }
+  .result.show { display: block; }
+  .result-stat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .result-stat:last-of-type { border-bottom: none; }
+  .result-stat .label { color: var(--muted); }
+  .result-stat .value { font-weight: 600; }
+  .result-stat .value.good { color: var(--good); }
+  a.download-btn {
+    display: block; text-align: center; padding: 13px; margin-top: 14px; border-radius: 8px;
+    background: var(--good); color: white; text-decoration: none; font-weight: 600; font-size: 15px;
+  }
+  a.download-btn:hover { opacity: .9; }
+  .warn-box {
+    background: #fbf3e3; border: 1px solid #ecd8a8; border-radius: 8px; padding: 10px 12px;
+    font-size: 13px; color: var(--warn); margin-top: 12px; display: none;
+  }
+  .warn-box.show { display: block; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px; line-height: 1.6; }
+  .privacy { display: flex; align-items: center; gap: 6px; justify-content: center; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧼 ScrubPDF</h1>
+  <p class="sub">In-browser PDF compression that doesn't destroy your figures. Cleans invisible ghost content other tools miss, keeps text/axes crisp.</p>
+
+  <div class="panel">
+    <div class="drop" id="drop">
+      <div class="drop-icon">📎</div>
+      <div class="drop-main" id="dropMain">Drop a PDF here, or click to choose</div>
+      <div class="drop-sub" id="dropSub">Works entirely offline, in this browser tab</div>
+      <input type="file" id="fileInput" accept="application/pdf">
+    </div>
+
+    <div class="modes">
+      <label class="mode-opt selected" data-mode="best">
+        <input type="radio" name="mode" value="best" checked>
+        <div>
+          <div class="mode-title">Best quality (recommended)</div>
+          <div class="mode-desc">Cleans up waste and safely shrinks heavy figures. Never rasterizes a whole page, so nothing that doesn't need it changes.</div>
+        </div>
+      </label>
+      <label class="mode-opt" data-mode="target">
+        <input type="radio" name="mode" value="target">
+        <div>
+          <div class="mode-title">Hit a specific size</div>
+          <div class="mode-desc">Keeps going as far as needed to get under a size you choose, as a last resort by flattening the heaviest pages to images.</div>
+        </div>
+      </label>
+      <label class="mode-opt" data-mode="clean">
+        <input type="radio" name="mode" value="clean">
+        <div>
+          <div class="mode-title">Just clean up</div>
+          <div class="mode-desc">Strips waste only (color profiles, duplicate images, off-page leftovers). No image recompression, nothing rasterized.</div>
+        </div>
+      </label>
+    </div>
+    <div class="target-row" id="targetRow" style="display:none">
+      Target size: <input type="number" id="targetMb" value="10" min="1" step="1"> MB
+    </div>
+
+    <button class="primary" id="runBtn" disabled>Choose a PDF first</button>
+    <div class="log" id="log"></div>
+    <div class="warn-box" id="warnBox"></div>
+
+    <div class="result" id="result">
+      <div class="result-stat"><span class="label">Original size</span><span class="value" id="statOrig">-</span></div>
+      <div class="result-stat"><span class="label">Compressed size</span><span class="value good" id="statNew">-</span></div>
+      <div class="result-stat"><span class="label">Reduction</span><span class="value" id="statRatio">-</span></div>
+      <div class="result-stat"><span class="label">Text preserved</span><span class="value" id="statText">-</span></div>
+      <a class="download-btn" id="downloadBtn" download="compressed.pdf">⬇ Download compressed PDF</a>
+    </div>
+  </div>
+
+  <footer>
+    <div class="privacy">🔒 Your file never leaves this browser tab - no upload, no server, no account.</div>
+    Built on pdf-lib and pdf.js. No installation, no network access required after this page loads.
+  </footer>
+</div>
+
+<script>/*__PDFLIB_JS__*/</script>
+<script>/*__PDFJS_JS__*/</script>
+<script>
+  const PDF_WORKER_B64 = "__PDFWORKER_B64__";
+  (function() {
+    const bin = atob(PDF_WORKER_B64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: "application/javascript" });
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  })();
+</script>
+<script>/*__ENGINE_JS__*/</script>
+<script>
+(function () {
+  const E = window.PDFCompressorEngine;
+  let selectedFile = null;
+  let resultBytes = null;
+  let resultUrl = null;
+
+  const drop = document.getElementById("drop");
+  const dropMain = document.getElementById("dropMain");
+  const dropSub = document.getElementById("dropSub");
+  const fileInput = document.getElementById("fileInput");
+  const runBtn = document.getElementById("runBtn");
+  const logEl = document.getElementById("log");
+  const warnBox = document.getElementById("warnBox");
+  const resultEl = document.getElementById("result");
+  const targetRow = document.getElementById("targetRow");
+  const targetMbInput = document.getElementById("targetMb");
+
+  function fmtMb(bytes) { return (bytes / 1e6).toFixed(2) + " MB"; }
+
+  function setFile(file) {
+    if (!file || file.type !== "application/pdf") {
+      if (file) appendLog("That doesn't look like a PDF file.");
+      return;
+    }
+    selectedFile = file;
+    drop.classList.add("has-file");
+    dropMain.textContent = file.name;
+    dropSub.textContent = fmtMb(file.size) + " - click to choose a different file";
+    runBtn.disabled = false;
+    runBtn.textContent = "Compress";
+    resultEl.classList.remove("show");
+    warnBox.classList.remove("show");
+  }
+
+  drop.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", (e) => setFile(e.target.files[0]));
+  ["dragenter", "dragover"].forEach((evt) =>
+    drop.addEventListener(evt, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((evt) =>
+    drop.addEventListener(evt, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
+  drop.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
+
+  document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      document.querySelectorAll(".mode-opt").forEach((el) => el.classList.remove("selected"));
+      radio.closest(".mode-opt").classList.add("selected");
+      targetRow.style.display = radio.value === "target" ? "flex" : "none";
+    });
+  });
+
+  function appendLog(msg) {
+    logEl.classList.add("show");
+    logEl.textContent += msg + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  async function extractAllText(bytes) {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    let total = "";
+    const perPage = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((it) => it.str).join("");
+      perPage.push(pageText.length);
+      total += pageText;
+    }
+    await doc.destroy();
+    return { total: total.length, perPage, pageCount: doc.numPages };
+  }
+
+  runBtn.addEventListener("click", async () => {
+    if (!selectedFile) return;
+    runBtn.disabled = true;
+    runBtn.textContent = "Working...";
+    logEl.textContent = "";
+    warnBox.classList.remove("show");
+    resultEl.classList.remove("show");
+
+    try {
+      const inputBytes = new Uint8Array(await selectedFile.arrayBuffer());
+      const mode = document.querySelector('input[name="mode"]:checked').value;
+
+      appendLog("Reading original text for verification...");
+      const before = await extractAllText(inputBytes);
+
+      let outBytes, stages = [], targetMet = true;
+      if (mode === "clean") {
+        const result = await E.runCleanPipeline(inputBytes, appendLog);
+        outBytes = result.outBytes;
+      } else {
+        const targetBytes = mode === "target" ? Math.round(parseFloat(targetMbInput.value) * 1e6) : null;
+        const result = await E.runCompressPipeline(inputBytes, targetBytes, {}, appendLog);
+        outBytes = result.outBytes;
+        stages = result.stages;
+        targetMet = result.targetMet;
+      }
+
+      appendLog("Verifying text preservation...");
+      const after = await extractAllText(outBytes);
+
+      const expectedLossPages = new Set();
+      for (const s of stages) {
+        if (s.stage === "whole_page_rasterize") for (const p of s.pages) expectedLossPages.add(p);
+        if (s.stage === "form_swap_and_regions") for (const p of s.pagesTouched || []) expectedLossPages.add(p);
+      }
+      const unexpectedLoss = [];
+      for (let i = 0; i < Math.min(before.perPage.length, after.perPage.length); i++) {
+        if (before.perPage[i] > 0 && after.perPage[i] === 0 && !expectedLossPages.has(i)) {
+          unexpectedLoss.push(i + 1);
+        }
+      }
+
+      resultBytes = outBytes;
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      const blob = new Blob([outBytes], { type: "application/pdf" });
+      resultUrl = URL.createObjectURL(blob);
+      const dl = document.getElementById("downloadBtn");
+      dl.href = resultUrl;
+      dl.download = selectedFile.name.replace(/\.pdf$/i, "") + " - compressed.pdf";
+
+      document.getElementById("statOrig").textContent = fmtMb(inputBytes.length);
+      document.getElementById("statNew").textContent = fmtMb(outBytes.length);
+      document.getElementById("statRatio").textContent =
+        Math.round((1 - outBytes.length / inputBytes.length) * 100) + "% smaller";
+      document.getElementById("statText").textContent =
+        before.total === after.total ? "100% (byte-identical)" :
+        `${after.total.toLocaleString()} / ${before.total.toLocaleString()} characters`;
+      resultEl.classList.add("show");
+
+      if (mode === "target" && !targetMet) {
+        warnBox.textContent = `Couldn't quite reach ${targetMbInput.value} MB even after rasterizing the heaviest pages - this is as small as it safely gets. Best achieved: ${fmtMb(outBytes.length)}.`;
+        warnBox.classList.add("show");
+      } else if (unexpectedLoss.length) {
+        warnBox.textContent = `Heads up: page(s) ${unexpectedLoss.join(", ")} lost selectable text unexpectedly. Worth a visual check before sharing.`;
+        warnBox.classList.add("show");
+      }
+
+      appendLog("Done.");
+    } catch (err) {
+      appendLog("Error: " + (err && err.message ? err.message : String(err)));
+      console.error(err);
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = "Compress";
+    }
+  });
+})();
+</script>
+</body>
+</html>
