@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>ScrubPDF</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google-site-verification" content="1BPiVwkAWfh16zVe_maMmtISLNt87GpPgpPoT60zuLw" />
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --border: #e2e0da; --text: #2b2a27;
@@ -45,6 +46,12 @@
   .target-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; margin-left: 26px; }
   .target-row input[type=number] {
     width: 80px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+  }
+  .exclude-row { margin-top: 14px; }
+  .exclude-row label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .exclude-row input[type=text] {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+    box-sizing: border-box;
   }
   button.primary {
     width: 100%; padding: 13px; margin-top: 20px; border: none; border-radius: 8px;
@@ -117,6 +124,11 @@
     </div>
     <div class="target-row" id="targetRow" style="display:none">
       Target size: <input type="number" id="targetMb" value="10" min="1" step="1"> MB
+    </div>
+
+    <div class="exclude-row">
+      <label for="excludePages">Exclude pages from compression (optional) - leaves them completely untouched, byte-for-byte</label>
+      <input type="text" id="excludePages" placeholder="e.g. 1, 3, 5-8">
     </div>
 
     <button class="primary" id="runBtn" disabled>Choose a PDF first</button>
@@ -234,17 +246,18 @@
     try {
       const inputBytes = new Uint8Array(await selectedFile.arrayBuffer());
       const mode = document.querySelector('input[name="mode"]:checked').value;
+      const excludePagesSpec = document.getElementById("excludePages").value.trim();
 
       appendLog("Reading original text for verification...");
       const before = await extractAllText(inputBytes);
 
       let outBytes, stages = [], targetMet = true;
       if (mode === "clean") {
-        const result = await E.runCleanPipeline(inputBytes, appendLog);
+        const result = await E.runCleanPipeline(inputBytes, appendLog, excludePagesSpec);
         outBytes = result.outBytes;
       } else {
         const targetBytes = mode === "target" ? Math.round(parseFloat(targetMbInput.value) * 1e6) : null;
-        const result = await E.runCompressPipeline(inputBytes, targetBytes, {}, appendLog);
+        const result = await E.runCompressPipeline(inputBytes, targetBytes, { excludePages: excludePagesSpec }, appendLog);
         outBytes = result.outBytes;
         stages = result.stages;
         targetMet = result.targetMet;
